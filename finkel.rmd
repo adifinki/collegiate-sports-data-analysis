@@ -1,0 +1,113 @@
+---
+title: "Collegiate Sports"
+output: html_document
+---
+Our project is based on Collegiate Sports data.
+
+link to the data: https://github.com/rfordatascience/tidytuesday/blob/master/data/2022/2022-03-29/readme.md?fbclid=IwAR1KAJ2uZjaS_Ao7Ocpiz23QlxDJESjrOdzbtH5Ni838aAgviSplkzpdc4A  
+
+We want to test and describe the variance of revenue between two different populations: male and female.  
+
+Our null hypothesis suggests the two populations have equal variances.  
+
+Our alternative hypothesis suggests male revenue has greater variance then female.
+
+$$
+H_0: \sigma^2_{\text{Male}} = \sigma^2_{\text{Female}}
+$$
+$$
+H_1: \sigma^2_{\text{Male}} > \sigma^2_{\text{Female}}
+$$
+
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+install.packages("tidytuesdayR", repos = "http://cran.us.r-project.org")
+tuesdata <- tidytuesdayR::tt_load('2022-03-29')
+sports <- tuesdata$sports
+```
+
+```{r}
+Q1_data <- tibble(value = c(sports$rev_men, sports$rev_women),
+                  n.participant = c(sports$sum_partic_men, sports$sum_partic_women), 
+                  Gender = rep(c("Men", "Women"), each = nrow(sports))) 
+```
+
+```{r}
+Q1_data %>% group_by(Gender) %>% summarise(M = mean(value, na.rm = T),
+                                           SD = sd(value, na.rm = T),
+                                           n = sum(n.participant))
+
+```
+
+Since we need normal distribution for the test residuals, we demonstrated the scale of the variance with logarithmic scale.
+
+```{r}
+var.test(x = log1p(sports$rev_women), y = log1p(sports$rev_men), 
+         data = sports, ratio = 1, alternative = "less")
+```
+
+We reject the null hypothesis with $F_0 = 0.7328$ , and $p-value<0.05$.  
+
+According to the following variance test, our findings accept the alternative hypothesis.  
+
+Male revenue has greater variance then female.
+
+```{r warning=FALSE, message=FALSE}
+Q1_data %>% 
+  ggplot(aes(x=value, fill = Gender)) + geom_density(alpha = 0.5) + scale_x_log10() +
+  labs(x = "Log revenue") + theme_bw()
+```
+
+Our next model is Multiple linear regression.  
+
+We want to Describe the relationship between revenue influenced by expenditures interacted with sport category.  
+
+We created 5 main categories and additional one for other sports.  
+
+Baseball is our reference category is.  
+
+```{r message=FALSE}
+Q2_data <- tibble(sport = case_when(
+  sports$sports == "Baseball"   ~ "Baseball",
+  sports$sports == "Soccer"     ~ "Soccer",
+  sports$sports == "Football"   ~ "Football",
+  sports$sports == "Basketball" ~ "Basketball",
+  sports$sports == "Golf" ~ "Golf",
+  TRUE                          ~ "Other")) %>% mutate(total_exp_menwomen = sports$total_exp_menwomen,
+                                                       total_rev_menwomen = sports$total_rev_menwomen)
+
+Q2_data %>% pivot_longer(-sport) %>% group_by(sport, name) %>% 
+  summarise(M = mean(value, na.rm=T),
+            SD = sd(value, na.rm=T),
+            n = n())
+```
+
+
+```{r}
+mod <- lm(total_rev_menwomen ~ total_exp_menwomen * sport, data = Q2_data)
+summary(mod)
+```
+The regression explains great amount of variance as we get high values of $R-square$ and $Adjusted R-square$.  
+
+In addition, the $p-value < 2.2e-16$ which increase the model significance.  
+
+```{r warning=FALSE}
+library(scales)
+Q2_data %>% ggplot(aes(x=total_exp_menwomen, y=total_rev_menwomen)) +
+  geom_point(alpha = 0.3) + 
+  geom_smooth(method = "lm", se = F, formula = "y~x") +
+  facet_wrap(~sport, scales = "free_x", ncol = 6) + 
+  theme_bw() + 
+  scale_x_continuous(labels = comma) +
+  scale_y_continuous(labels = comma) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.3))+
+  labs(x=NULL, y=NULL, title = "Revenue Vs. Exp")
+```
+
+
+As demonstrated,the football expenditures has great influence of the incline.  
+
+The other categories distinguish a linear relationship, but not as pronounced.
+
+We acknowledge Homoscedasticity (the assumption of equal or similar variances) is an important assumption of the regression, although we noticed otherwise. 
+
